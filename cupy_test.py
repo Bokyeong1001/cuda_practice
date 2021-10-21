@@ -1,5 +1,6 @@
 import cupy as cp
 import numpy as np
+
 print_from_gpu = cp.RawKernel(r'''
 extern "C" __global__
 void print_from_gpu(){

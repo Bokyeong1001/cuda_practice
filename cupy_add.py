@@ -1,5 +1,6 @@
 import cupy as cp
 import numpy as np
+
 add_kernel = cp.RawKernel(r'''
 extern "C" __global__
 void my_add(const float* x1, const float* x2, float* y) {
