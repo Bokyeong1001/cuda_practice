@@ -2,7 +2,8 @@
  #include <stdlib.h>
  #include <assert.h>
  
- #define BLOCK_SIZE 16
+ #define BLOCK_SIZE 4
+ //nvcc matmul.cu -o matmul
 
  __global__ void gpu_matrix_mult(int *A,int *B, int *C, int N)
  { 
@@ -37,7 +38,7 @@
 
  int main(int argc, char const *argv[])
  {
-    int N = 16;
+    int N = 4;
     int SIZE = N*N;
 
      /* Fixed seed for illustration */

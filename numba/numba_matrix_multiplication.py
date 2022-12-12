@@ -1,6 +1,6 @@
 from __future__ import division
 from numba import cuda
-import numpy
+import numpy as np
 import math
 
 # CUDA kernel
@@ -19,26 +19,33 @@ def matmul(A, B, C):
 # Host code
 
 # Initialize the data arrays
-A = numpy.full((24, 12), 3, numpy.float64) # matrix containing all 3's
-B = numpy.full((12, 22), 4, numpy.float64) # matrix containing all 4's
+N = 4
+h_A = np.zeros((N, N),dtype=np.int32)
+h_B = np.zeros((N, N),dtype=np.int32)
+
+for i in range(N):
+    for j in range(N):
+        h_A[i][j] = (j%4) + 1
+        h_B[i][j] = (j%4) + 5
 
 # Copy the arrays to the device
-A_global_mem = cuda.to_device(A)
-B_global_mem = cuda.to_device(B)
+A_global_mem = cuda.to_device(h_A)
+B_global_mem = cuda.to_device(h_B)
 
 # Allocate memory on the device for the result
-C_global_mem = cuda.device_array((24, 22))
+C_global_mem = cuda.device_array((N, N))
 
 # Configure the blocks
-threadsperblock = (16, 16)
-blockspergrid_x = int(math.ceil(A.shape[0] / threadsperblock[0]))
-blockspergrid_y = int(math.ceil(B.shape[1] / threadsperblock[1]))
+threadsperblock = (N, N)
+blockspergrid_x = int(math.ceil(h_A.shape[0] / threadsperblock[0]))
+blockspergrid_y = int(math.ceil(h_B.shape[1] / threadsperblock[1]))
 blockspergrid = (blockspergrid_x, blockspergrid_y)
 
 # Start the kernel 
 matmul[blockspergrid, threadsperblock](A_global_mem, B_global_mem, C_global_mem)
 
 # Copy the result back to the host
-C = C_global_mem.copy_to_host()
+h_C = C_global_mem.copy_to_host()
 
-#print(C)
+print(h_C)
+print(np.matmul(h_A,h_B))

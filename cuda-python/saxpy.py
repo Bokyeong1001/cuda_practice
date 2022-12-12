@@ -2,6 +2,7 @@ from cuda import cuda, nvrtc
 import numpy as np
 import time
 start = time.time()
+
 def print_output(x, y, out):
     for idx in range(10):
         print(f"2 X {x[idx]} + {y[idx]} = {out[idx]}\n")
