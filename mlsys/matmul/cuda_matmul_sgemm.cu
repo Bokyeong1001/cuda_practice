@@ -25,20 +25,20 @@ void gpu_blas_mmul(const float *A, const float *B, float *C, const int m, const 
 }
 
 extern "C" {
-void cuda_matmul(float *a, float *b, float *c, int m, int n, int k, size_t input_size, size_t weight_size, size_t output_size)
+void cuda_matmul(float *a, float *b, float *c, int m, int n, int k, size_t a_size, size_t b_size, size_t c_size)
 {
     float *d_a, *d_b, *d_c;
 
-    cudaMalloc((void **)&d_a, input_size * sizeof(float));
-    cudaMalloc((void **)&d_b, weight_size * sizeof(float));
-    cudaMalloc((void **)&d_c, output_size * sizeof(float));
+    cudaMalloc((void **)&d_a, a_size * sizeof(float));
+    cudaMalloc((void **)&d_b, b_size * sizeof(float));
+    cudaMalloc((void **)&d_c, c_size * sizeof(float));
 
-    cudaMemcpy(d_a, a, input_size * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_b, b, weight_size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_a, a, a_size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, b_size * sizeof(float), cudaMemcpyHostToDevice);
 
     gpu_blas_mmul(d_a, d_b, d_c, m, n, k);
 
-    cudaMemcpy(c, d_c, output_size * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(c, d_c, c_size * sizeof(float), cudaMemcpyDeviceToHost);
 
     cudaFree(d_a);
     cudaFree(d_b);

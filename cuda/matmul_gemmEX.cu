@@ -120,8 +120,7 @@ int main() {
      blas_forward(d_A, d_B, d_C, nr_rows_A, nr_cols_B, nr_cols_A);
  
      // Copy (and print) the result on host memory
-     cudaMemcpy(h_C,d_C,nr_rows_C * nr_cols_C * sizeof(float),cudaMemcpyDeviceToHost);
-     std::cout << "C =" << std::endl;
+     cudaMemcpy(h_C,d_C,nr_rows_C * nr_cols_C *float
      print_matrix(h_C, nr_rows_C, nr_cols_C);
     
      blas_backward(d_A, d_C, d_B, nr_rows_A, nr_cols_C, nr_cols_A);
