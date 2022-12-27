@@ -22,7 +22,7 @@ void print_matrix(const float *A, int rows, int cols, int batch_count) {
 
 int main()
 {
-    int batch_size = 4;
+    int batch_size = 2;
 
     float *h_A, *h_B, *h_C;
     cudaMallocHost(&h_A, sizeof(float) * M * K * batch_size);
