@@ -7,7 +7,7 @@ nvidia_dlprof_pytorch_nvtx.init()
 
 # extract cuda_sum function pointer in the shared object cuda_sum.so
 def get_cuda_matmul():
-    dll = ctypes.CDLL('./cuda_matmul_sgemm.so', mode=ctypes.RTLD_GLOBAL)
+    dll = ctypes.CDLL('./cuda_matmul_gemmEX.so', mode=ctypes.RTLD_GLOBAL)
     func = dll.cuda_matmul
     func.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, c_int, c_int, c_int, c_size_t, c_size_t, c_size_t]
     return func
@@ -30,9 +30,9 @@ if __name__ == '__main__':
     #size=int(128*128)
 
     #N = 128
-    m = 2
-    n = 3
-    k = 4
+    m = 128
+    n = 128
+    k = 128
     input_size = m * k
     weight_size = k * n
     output_size = m * n
@@ -52,15 +52,14 @@ if __name__ == '__main__':
     output = torch.zeros((m,n), dtype=torch.float32, device='cuda')"""
 
     grad_output = torch.ones((m,n), dtype=torch.float32, device='cuda')
-
-    input = torch.zeros((m,k), dtype=torch.float32, device='cuda')
-    for i in range(m):
+    input = torch.ones((m,k), dtype=torch.float32, device='cuda')
+    """for i in range(m):
         for j in range(k):
-            input[i][j] = i+j
+            input[i][j] = i+j"""
     grad_weight = torch.zeros((k,n), dtype=torch.float32, device='cuda')
     
-    print(grad_output)
-    print(input)
+    #print(grad_output)
+    #print(input)
     
     with torch.autograd.profiler.emit_nvtx():
         input_tmp = input.t()
@@ -70,7 +69,7 @@ if __name__ == '__main__':
         a_size = output_size
         b_size = input_size
         c_size = weight_size
-
-        __cuda_matmul(a_p, b_p, c_p, n, k, m, a_size, b_size, c_size)
-        print(grad_weight.t())
-    print(torch.matmul(grad_output.t(),input))
+        for _ in range(100):
+            __cuda_matmul(a_p, b_p, c_p, n, k, m, a_size, b_size, c_size)
+        #print(grad_weight.t())
+    #print(torch.matmul(grad_output.t(),input))

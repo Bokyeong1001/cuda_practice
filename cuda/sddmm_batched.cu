@@ -24,33 +24,40 @@
     }                                                                          \
 }
 
-void print_matrix(const float *A, int nr_rows_A, int nr_cols_A) {
- 
-    for(int i = 0; i < nr_rows_A; i++){
-        for(int j = 0; j < nr_cols_A; j++){
-            printf("%0.1f ",A[i * nr_cols_A + j]);
+void print_matrix(const float *A, int nr_rows_A, int nr_cols_A, int batch_size) {
+    for (int k = 0; k < batch_size; k++){
+        for(int j = 0; j < nr_rows_A; j++){
+            for(int i = 0; i < nr_cols_A; i++){
+                int index = j*nr_cols_A + i + k*nr_rows_A*nr_cols_A;
+                printf("%0.1f ",A[index]);
+            }
+            printf("\n");
         }
         printf("\n");
     }
-    printf("\n");
 }
 
-void print_matrixC(const float *C, const int *hC_offsets, const int *hC_columns, int nr_rows_C, int nr_cols_C) {
+void print_matrixC(const float *C, const int *hC_offsets, const int *hC_columns, int nr_rows_C, int nr_cols_C, int C_nnz, int batch_size) {
     int k = 0;
-    for(int i = 1; i < nr_rows_C+1; i++){
-        for(int j = 0; j < nr_cols_C; j++){
-            if(j==hC_columns[k]){
-                if(k<hC_offsets[i]){
-                    printf("%0.1f ", C[k]);
-                    k += 1;
+    for(int b = 0; b < batch_size; b++){
+        printf("\n%d\n", k);
+        k=0;
+        for(int i = 1; i < nr_rows_C+1; i++){
+            for(int j = 0; j < nr_cols_C; j++){
+                if(j==hC_columns[k+C_nnz*b]){
+                    if(k<hC_offsets[i]){
+                        printf("%0.1f ", C[k+C_nnz*b]);
+                        k += 1;
+                    }
+                    else{
+                        printf("0 ");
+                    }
                 }
                 else{
                     printf("0 ");
                 }
             }
-            else{
-                printf("0 ");
-            }
+            printf("\n");
         }
         printf("\n");
     }
@@ -70,39 +77,40 @@ int main(void) {
     int   B_size       = ldb * B_num_rows;
     int   num_batches  = 2;
 
-    float hA1[]        = { 1.0f,   2.0f,  3.0f,  4.0f,
-                           5.0f,   6.0f,  7.0f,  8.0f,
-                           9.0f,  10.0f, 11.0f, 12.0f,
-                           13.0f, 14.0f, 15.0f, 16.0f };
-    float hA2[]        = { 10.0f,   11.0f,  12.0f,  13.0f,
-                           14.0f,   15.0f,  16.0f,  17.0f,
-                           18.0f,   19.0f,  20.0f,  21.0f,
-                           22.0f,   23.0f,  24.0f,  25.0f };
-    float hB1[]        = {  1.0f,  2.0f,  3.0f,
-                            4.0f,  5.0f,  6.0f,
-                            7.0f,  8.0f,  9.0f,
-                            10.0f, 11.0f, 12.0f };
-    float hB2[]        = {  6.0f,  4.0f,  2.0f,
-                            3.0f,  7.0f,  1.0f,
-                            9.0f,  5.0f,  2.0f,
-                            8.0f,  4.0f,  7.0f };
     int   hC_offsets[]  = { 0, 3, 4, 7, 9 };
-    int   hC_columns1[] = { 0, 1, 2, 1, 0, 1, 2, 0, 2 };
-    int   hC_columns2[] = { 0, 1, 2, 0, 0, 1, 2, 1, 2 };
-    float hC_values1[]  = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                           0.0f, 0.0f, 0.0f, 0.0f };
-    float hC_values2[]  = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                           0.0f, 0.0f, 0.0f, 0.0f };
-    float hC_result1[]  = { 70.0f, 80.0f, 90.0f,
-                           184.0f,
-                           246.0f, 288.0f, 330.0f,
-                           334.0f, 450.0f };
-    float hC_result2[]  = {305.0f, 229.0f, 146.0f,
-                           409.0f,
-                           513.0f, 389.0f, 242.0f,
-                           469.0f, 290.0f };
+    int   hC_columns[] = { 0, 1, 2, 1, 0, 1, 2, 0, 2, 
+                           0, 1, 2, 1, 0, 1, 2, 0, 2};
     float alpha        = 1.0f;
     float beta         = 0.0f;
+
+    float *hA, *hB, *hC_values;
+    cudaMallocHost(&hA, sizeof(float) * A_num_rows * A_num_cols * num_batches);
+    cudaMallocHost(&hB, sizeof(float) * B_num_rows * B_num_cols * num_batches);
+    cudaMallocHost(&hC_values, sizeof(float) * C_nnz * num_batches);
+
+    for(int k=0; k<num_batches; k++) {
+        for(int j=0; j<A_num_rows; j++) {
+            for(int i=0; i<A_num_cols; i++) {
+                int index = j*A_num_cols + i + k*A_num_rows*A_num_cols;
+                hA[index] = i+j + 0.0f;
+            }       
+        }
+    }  
+
+    for(int k=0; k<num_batches; k++) {
+        for(int j=0; j<B_num_rows; j++) {
+            for(int i=0; i<B_num_cols; i++) {
+                int index = j*B_num_cols + i + k*B_num_rows*B_num_cols;
+                hB[index] = i+j + 0.0f;
+            }       
+        }
+    }
+    printf("A = \n");
+    print_matrix(hA, A_num_rows, A_num_cols,num_batches);
+
+    printf("B = \n");
+    print_matrix(hB, B_num_rows, B_num_cols,num_batches);
+
     //--------------------------------------------------------------------------
     // Device memory management
     int   *dC_offsets, *dC_columns;
@@ -118,24 +126,16 @@ int main(void) {
     CHECK_CUDA( cudaMalloc((void**) &dC_values,
                            C_nnz * num_batches * sizeof(float)) )
 
-    CHECK_CUDA( cudaMemcpy(dA, hA1, A_size * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dA, hA, A_size * sizeof(float) * num_batches,
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA + A_size, hA2, A_size * sizeof(float),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dB, hB1, B_size * sizeof(float),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dB + B_size, hB2, B_size * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dB, hB, B_size * sizeof(float) * num_batches,
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dC_offsets, hC_offsets,
                            (A_num_rows + 1) * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC_columns, hC_columns1, C_nnz * sizeof(int),
+    CHECK_CUDA( cudaMemcpy(dC_columns, hC_columns, C_nnz * sizeof(int) * num_batches,
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC_columns + C_nnz, hC_columns2, C_nnz * sizeof(int),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC_values, hC_values1, C_nnz * sizeof(float),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC_values + C_nnz, hC_values2, C_nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dC_values, hC_values, C_nnz * sizeof(float) * num_batches,
                            cudaMemcpyHostToDevice) )
     //--------------------------------------------------------------------------
     // CUSPARSE APIs
@@ -188,25 +188,14 @@ int main(void) {
     CHECK_CUSPARSE( cusparseDestroy(handle) )
     //--------------------------------------------------------------------------
     // device result check
-    CHECK_CUDA( cudaMemcpy(hC_values1, dC_values, C_nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(hC_values, dC_values, C_nnz * sizeof(float) * num_batches,
                            cudaMemcpyDeviceToHost) )
-    CHECK_CUDA( cudaMemcpy(hC_values2, dC_values + C_nnz, C_nnz * sizeof(float),
-                           cudaMemcpyDeviceToHost) )
-    int correct = 1;
-    for (int i = 0; i < C_nnz; i++) {
-        if (hC_values1[i] != hC_result1[i]) {
-            correct = 0; // direct floating point comparison is not reliable
-            break;
-        }
-        if (hC_values2[i] != hC_result2[i]) {
-            correct = 0; // direct floating point comparison is not reliable
-            break;
-        }
-    }
-    if (correct)
-        printf("sddmm_csr_batched_example test PASSED\n");
-    else
-        printf("sddmm_csr_batched_example test FAILED: wrong result\n");
+    printf("C = \n");
+    /*for (int i = 0; i < C_nnz; i++) {
+        printf("%0.1f ", hC_values[i]);
+    }*/
+    print_matrixC(hC_values, hC_offsets, hC_columns, A_num_rows, B_num_cols, C_nnz, num_batches);
+
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dBuffer) )
