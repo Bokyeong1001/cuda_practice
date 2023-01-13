@@ -72,13 +72,13 @@ if __name__ == '__main__':
     #print(hC_columns)
     #print(C_nnz)
 
-    hA = torch.zeros((m*k*num_batches), dtype=torch.float32, device='cuda')
-    hB = torch.zeros((k*n*num_batches), dtype=torch.float32, device='cuda')
-    hC_values = torch.zeros(num_batches*C_nnz, dtype=torch.float32, device='cuda')
+    hA = torch.rand((m*k*num_batches), dtype=torch.float32, device='cuda')
+    hB = torch.rand((k*n*num_batches), dtype=torch.float32, device='cuda')
+    hC_values = torch.rand(num_batches*C_nnz, dtype=torch.float32, device='cuda')
     hC_offsets = torch.tensor(hC_offsets,dtype=torch.int32, device='cuda')
     hC_columns = torch.tensor(hC_columns,dtype=torch.int32, device='cuda')
 
-    for b in range(num_batches):
+    """for b in range(num_batches):
         for j in range(m):
             for i in range(k):
                 index = j*k + i + b*m*k
@@ -86,12 +86,12 @@ if __name__ == '__main__':
         for j in range(k):
             for i in range(n):
                 index = j*n + i + b*k*n
-                hB[index] = i%4+1
+                hB[index] = i%4+1"""
 
-    print("A = ")
+    """print("A = ")
     print_matrix(hA,m,k,num_batches)
     print("B = ")
-    print_matrix(hB,k,n,num_batches)
+    print_matrix(hB,k,n,num_batches)"""
 
     hA_p = hA.contiguous().data_ptr()
     hB_p = hB.contiguous().data_ptr()

@@ -74,7 +74,7 @@ def python_softmax(values, rows, cols, block_size, num_batches):
 #(float *hQuery, float *hKey, float *hValue, float *hAttn, float *hAttnOut, float *hOut, int *hOffsets, int *hColumns, int seq_len, int emb_dim, int nnz, int block_size, int num_batches)
 
 def get_attn_forward():
-    dll = ctypes.CDLL('./attn_forward.so', mode=ctypes.RTLD_GLOBAL)
+    dll = ctypes.CDLL('./block_attn_forward.so', mode=ctypes.RTLD_GLOBAL)
     func = dll.attn_forward
     func.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, c_int, c_int, c_int, c_int, c_int]
     return func
@@ -165,7 +165,7 @@ if __name__ == '__main__':
 
     print("Torch Attn Out = ")
     softmax = torch.nn.Softmax(dim=-1)
-    torch_attn_out = softmax(torch_attn) * mask
+    torch_attn_out = softmax(torch_attn/math.sqrt(emb_dim)) * mask
     print(torch_attn_out)
     
     print("\nOut = ")

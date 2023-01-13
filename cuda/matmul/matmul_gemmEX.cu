@@ -1,8 +1,8 @@
 #include <iostream>
 #include <cuda_runtime.h>
-#include <cublas.h>
-#include <cublas_api.h>
 #include <cublas_v2.h>
+#include <cublas_api.h>
+
 
 using namespace std;
 //nvcc -lcublas -o matmul_gemmEX matmul_gemmEX.cu

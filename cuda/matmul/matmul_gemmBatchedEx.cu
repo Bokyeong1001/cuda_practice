@@ -6,7 +6,7 @@
 #define K 4
 
 
-//nvcc -lcublas -o matmul_gemmBatchedEx matmul_gemmBatchedEx.cu
+//nvcc lcublas_static -o matmul_gemmBatchedEx matmul_gemmBatchedEx.cu
 void print_matrix(float *A, int rows, int cols, int batch_size) {
     for (int i = 0; i < batch_size; i++){
         for (int j = 0; j < rows; j++){

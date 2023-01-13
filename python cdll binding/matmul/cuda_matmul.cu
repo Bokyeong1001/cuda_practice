@@ -21,17 +21,17 @@
  } 
 
 extern "C" {
-void cuda_matmul(float *a, float *b, float *c, int N, size_t size)
+void cuda_matmul(float *a, float *b, float *c, int N)
 {
 
     float *d_a, *d_b, *d_c;
 
-    cudaMalloc((void **)&d_a, size * sizeof(float));
-    cudaMalloc((void **)&d_b, size * sizeof(float));
-    cudaMalloc((void **)&d_c, size * sizeof(float));
+    cudaMalloc((void **)&d_a, N * N * sizeof(float));
+    cudaMalloc((void **)&d_b, N * N * sizeof(float));
+    cudaMalloc((void **)&d_c, N * N * sizeof(float));
 
-    cudaMemcpy(d_a, a, size * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_b, b, size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_a, a, N * N * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, N * N * sizeof(float), cudaMemcpyHostToDevice);
 
     unsigned int grid_rows = (N + BLOCK_SIZE - 1) / BLOCK_SIZE;
     unsigned int grid_cols = (N + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -40,7 +40,7 @@ void cuda_matmul(float *a, float *b, float *c, int N, size_t size)
 
     gpu_matrix_mult<<<dimGrid, dimBlock>>>(d_a, d_b, d_c, N);    
 
-    cudaMemcpy(c, d_c, size * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(c, d_c, N * N * sizeof(float), cudaMemcpyDeviceToHost);
 
     cudaFree(d_a);
     cudaFree(d_b);

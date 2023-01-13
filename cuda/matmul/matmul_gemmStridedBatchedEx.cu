@@ -20,9 +20,10 @@ void print_matrix(const float *A, int rows, int cols, int batch_count) {
     
 }
 
+
 int main()
 {
-    int batch_size = 2;
+    int batch_size = 4;
 
     float *h_A, *h_B, *h_C;
     cudaMallocHost(&h_A, sizeof(float) * M * K * batch_size);
@@ -92,6 +93,7 @@ int main()
                                d_C, CUDA_R_32F, ldc, strideC,
                                batch_size,
                                CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT);
+
 
     cudaMemcpy(h_C,d_C,sizeof(float) * M * N * batch_size,cudaMemcpyDeviceToHost);
     std::cout << "C =" << std::endl;

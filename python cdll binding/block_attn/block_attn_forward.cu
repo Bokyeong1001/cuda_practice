@@ -5,11 +5,17 @@
 
 //nvcc -Xcompiler -fPIC -shared -lcusparse -o attn_forward.so attn_forward.cu
 
-__global__ void softmax_kernel(float *d_out, float *d_values, int rows, int cols, int block_size, int num_batch)
+__global__ void scale_softmax_kernel(float *d_out, float *d_values, int rows, int cols, int emb_dim, int block_size, int num_batch)
 {
+    float scale = sqrtf(float(emb_dim));
     int i = blockIdx.x * blockDim.x + threadIdx.x;
+
     if (i >= rows*num_batch)
         return;
+
+    for (int k = 0; k < block_size; k++){
+            d_values[i * block_size + k] = d_values[i * block_size + k]/scale;
+    }
 
     float max = 0.0;
     for (int k = 0; k < block_size; k++){
@@ -31,7 +37,7 @@ __global__ void softmax_kernel(float *d_out, float *d_values, int rows, int cols
     }
 }
 
-void spmm(cusparseHandle_t handle, void *dBuffer, float *dAttn, float *dValue, float *dOut, int *d_offsets, int *d_columns, int seq_len, int emb_dim, int nnz, int num_batches)
+void spmm(cusparseHandle_t handle, cusparseOperation_t opA, void *dBuffer, float *dA, float *dB, float *dC, int *d_offsets, int *d_columns, int seq_len, int emb_dim, int nnz, int num_batches)
 {
     // Host problem definition
     int   ldb         = seq_len;
@@ -47,36 +53,33 @@ void spmm(cusparseHandle_t handle, void *dBuffer, float *dAttn, float *dValue, f
 
     // Create sparse matrix A in CSR format
     cusparseCreateCsr(&matA, seq_len, seq_len, nnz,
-                                      d_offsets, d_columns, dAttn,
+                                      d_offsets, d_columns, dA,
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F);
     cusparseCsrSetStridedBatch(matA, num_batches, 0, nnz);
     // Alternatively, the following code can be used for matA broadcast
     // cusparseCsrSetStridedBatch(matA, num_batches, 0, 0);
     // Create dense matrix B
-    cusparseCreateDnMat(&matB, seq_len, emb_dim, ldb, dValue,
+    cusparseCreateDnMat(&matB, seq_len, emb_dim, ldb, dB,
                                         CUDA_R_32F, CUSPARSE_ORDER_COL);
     cusparseDnMatSetStridedBatch(matB, num_batches, output_size);
     // Create dense matrix C
-    cusparseCreateDnMat(&matC, seq_len, emb_dim, ldc, dOut,
+    cusparseCreateDnMat(&matC, seq_len, emb_dim, ldc, dC,
                                         CUDA_R_32F, CUSPARSE_ORDER_COL);
     cusparseDnMatSetStridedBatch(matC, num_batches, output_size);
 
     // allocate an external buffer if needed
-    cusparseSpMM_bufferSize(
-                                 handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                 CUSPARSE_SPMM_CSR_ALG2, &bufferSize);
+    cusparseSpMM_bufferSize(handle,
+                            opA, CUSPARSE_OPERATION_NON_TRANSPOSE,
+                            &alpha, matA, matB, &beta, matC, CUDA_R_32F,
+                            CUSPARSE_SPMM_CSR_ALG2, &bufferSize);
     cudaMalloc(&dBuffer, bufferSize);
 
     // execute SpMM
-    cusparseSpMM(handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 &alpha, matA, matB, &beta, matC, CUDA_R_32F,
-                                 CUSPARSE_SPMM_CSR_ALG2, dBuffer);
+    cusparseSpMM(handle, 
+                opA, CUSPARSE_OPERATION_NON_TRANSPOSE, 
+                &alpha, matA, matB, &beta, matC, CUDA_R_32F,
+                CUSPARSE_SPMM_CSR_ALG2, dBuffer);
 
     // destroy matrix/vector descriptors
     cusparseDestroySpMat(matA);
@@ -142,30 +145,30 @@ void sddmm(cusparseHandle_t handle, void *dBuffer, float *dQuery, float *dKey, f
 }
 
 extern "C" {
-void attn_forward(float *hQuery, float *hKey, float *hValue, float *hAttn, float *hAttnOut, float *hOut, int *hOffsets, int *hColumns, int seq_len, int emb_dim, int nnz, int block_size, int num_batches)
+void attn_forward(float *hQuery, float *hKey, float *hValue, float *hAttn, float *hAttnScore, float *hOut, int *hOffsets, int *hColumns, int seq_len, int emb_dim, int nnz, int block_size, int num_batches)
 {
     // Host problem definition
     int   input_size       = seq_len * emb_dim;
 
-    int   *d_offsets, *d_columns;
-    float *dQuery, *dKey, *dValue, *dAttn, *dAttnOut, *dOut;
+    int   *dOffsets, *dColumns;
+    float *dQuery, *dKey, *dValue, *dAttn, *dAttnScore, *dOut;
 
     cudaMalloc((void**) &dQuery, input_size * num_batches * sizeof(float));
     cudaMalloc((void**) &dKey, input_size * num_batches * sizeof(float));
     cudaMalloc((void**) &dValue, input_size * num_batches * sizeof(float));
     cudaMalloc((void**) &dAttn, nnz * num_batches * sizeof(float));
-    cudaMalloc((void**) &dAttnOut, nnz * num_batches * sizeof(float));
-    cudaMalloc((void**) &d_offsets, (seq_len + 1) * sizeof(int));
-    cudaMalloc((void**) &d_columns, nnz * num_batches * sizeof(int));
+    cudaMalloc((void**) &dAttnScore, nnz * num_batches * sizeof(float));
+    cudaMalloc((void**) &dOffsets, (seq_len + 1) * sizeof(int));
+    cudaMalloc((void**) &dColumns, nnz * num_batches * sizeof(int));
     cudaMalloc((void**) &dOut, input_size * num_batches * sizeof(float));
 
     cudaMemcpy(dQuery, hQuery, input_size * sizeof(float) * num_batches, cudaMemcpyHostToDevice);
     cudaMemcpy(dKey, hKey, input_size * sizeof(float) * num_batches, cudaMemcpyHostToDevice);
     cudaMemcpy(dValue, hValue, input_size * sizeof(float) * num_batches, cudaMemcpyHostToDevice);
     cudaMemcpy(dAttn, hAttn, nnz * sizeof(float) * num_batches, cudaMemcpyHostToDevice);
-    cudaMemcpy(dAttnOut, hAttnOut, nnz * sizeof(float) * num_batches, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_offsets, hOffsets, (seq_len + 1) * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_columns, hColumns, nnz * sizeof(int) * num_batches, cudaMemcpyHostToDevice);
+    cudaMemcpy(dAttnScore, hAttnScore, nnz * sizeof(float) * num_batches, cudaMemcpyHostToDevice);
+    cudaMemcpy(dOffsets, hOffsets, (seq_len + 1) * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(dColumns, hColumns, nnz * sizeof(int) * num_batches, cudaMemcpyHostToDevice);
     cudaMemcpy(dOut, hOut, input_size * sizeof(float) * num_batches, cudaMemcpyHostToDevice);
 
     //--------------------------------------------------------------------------
@@ -174,13 +177,13 @@ void attn_forward(float *hQuery, float *hKey, float *hValue, float *hAttn, float
     cusparseCreate(&handle);
     void* dBuffer    = NULL;
 
-    sddmm(handle, dBuffer, dQuery, dKey, dAttn, d_offsets, d_columns, seq_len, emb_dim, nnz, num_batches);
+    sddmm(handle, dBuffer, dQuery, dKey, dAttn, dOffsets, dColumns, seq_len, emb_dim, nnz, num_batches);
     cudaMemcpy(hAttn, dAttn, nnz * sizeof(float) * num_batches, cudaMemcpyDeviceToHost);
 
-    softmax_kernel<<<num_batches, seq_len>>>(dAttnOut, dAttn, seq_len, seq_len, block_size, num_batches);
-    cudaMemcpy(hAttnOut, dAttnOut, nnz * sizeof(float) * num_batches, cudaMemcpyDeviceToHost);
+    scale_softmax_kernel<<<num_batches, seq_len>>>(dAttnScore, dAttn, seq_len, seq_len, emb_dim, block_size, num_batches);
+    cudaMemcpy(hAttnScore, dAttnScore, nnz * sizeof(float) * num_batches, cudaMemcpyDeviceToHost);
 
-    spmm(handle, dBuffer, dAttnOut, dValue, dOut, d_offsets, d_columns, seq_len, emb_dim, nnz, num_batches);
+    spmm(handle, CUSPARSE_OPERATION_NON_TRANSPOSE, dBuffer, dAttnScore, dValue, dOut, dOffsets, dColumns, seq_len, emb_dim, nnz, num_batches);
     cudaMemcpy(hOut, dOut, input_size * sizeof(float) * num_batches, cudaMemcpyDeviceToHost);
     //--------------------------------------------------------------------------
     // device memory deallocation
@@ -189,10 +192,10 @@ void attn_forward(float *hQuery, float *hKey, float *hValue, float *hAttn, float
     cudaFree(dKey);
     cudaFree(dValue);
     cudaFree(dAttn);
-    cudaFree(dAttnOut);
+    cudaFree(dAttnScore);
     cudaFree(dOut);
-    cudaFree(d_offsets);
-    cudaFree(d_columns);
+    cudaFree(dOffsets);
+    cudaFree(dColumns);
     
     cusparseDestroy(handle);
 }
